@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from skill_trigger_bench.evaluate import run_eval
-from skill_trigger_bench.prompts import PromptFileError, PromptSet, generate, load_prompt_file
+from skill_trigger_bench.prompts import GENERIC_NEGATIVES, PromptFileError, PromptSet, generate, load_prompt_file
 from skill_trigger_bench.runners import ClaudeRunner, ReplayRunner
 from skill_trigger_bench.skills import find_skills
 
@@ -62,6 +62,37 @@ class EvalTests(SkillDirCase):
         self.assertEqual(len(ps.should_not_trigger), 4)
         self.assertTrue(any("CSV" in p or "csv" in p for p in ps.should_trigger))
         self.assertTrue(any("sourdough" in p.lower() for p in ps.should_not_trigger))
+
+    def test_generate_is_deterministic(self):
+        other = find_skills(
+            self.make_skill("bread", "bread", "Bake sourdough bread. Use when the user asks about baking.")
+        )[0]
+        a = generate(self.skill(), [other], n=10)
+        b = generate(self.skill(), [other], n=10)
+        self.assertEqual(a.should_trigger, b.should_trigger)
+        self.assertEqual(a.should_not_trigger, b.should_not_trigger)
+
+    def test_generate_covers_new_styles(self):
+        ps = generate(self.skill(), [], n=10)
+        self.assertEqual(len(ps.should_trigger), 10)
+        joined = "\n".join(ps.should_trigger)
+        self.assertIn(".csv", joined)  # prompts that mention a file by name
+        self.assertTrue(any(p.endswith("pls") for p in ps.should_trigger))  # very short prompt
+        self.assertTrue(any("goal" in p.lower() for p in ps.should_trigger))  # goal instead of a task
+        self.assertTrue(any("past" in p.lower() for p in ps.should_trigger))  # pasted file/output + short ask
+
+    def test_file_prompts_only_for_file_skills(self):
+        bread = find_skills(
+            self.make_skill("bread", "bread", "Bake sourdough bread. Use when the user asks about baking.")
+        )[0]
+        ps = generate(bread, [], n=10)
+        self.assertNotIn(".csv", "\n".join(ps.should_trigger))
+
+    def test_generic_negatives_have_near_misses(self):
+        self.assertGreaterEqual(len(GENERIC_NEGATIVES), 10)
+        joined = "\n".join(GENERIC_NEGATIVES)
+        self.assertIn("JSON", joined)
+        self.assertIn("SQL", joined)
 
     def test_prompt_file_yaml(self):
         p = self.root / "p.yaml"

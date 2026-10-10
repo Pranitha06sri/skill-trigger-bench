@@ -53,6 +53,12 @@ GENERIC_NEGATIVES = [
     "Explain the difference between a list and a tuple in Python in two sentences.",
     "Write a haiku about autumn rain.",
     "How many seconds are there in a week?",
+    'Convert this JSON object to YAML: {"a": 1, "b": [2, 3]}',
+    "Write a SQL query that finds duplicate emails in a users table.",
+    "Plot a bar chart of monthly revenue from this spreadsheet.",
+    "Summarize this meeting transcript in three bullet points.",
+    "Write a regex that validates email addresses.",
+    "Draft a short reminder email about tomorrow morning's standup.",
 ]
 
 
@@ -77,26 +83,57 @@ def _phrases(desc: str) -> list[str]:
     return uniq
 
 
+FILE_HINT_RE = re.compile(
+    r"\b(files?|csv|tsv|pdfs?|docx?|xlsx?|json|yaml|spreadsheets?|documents?|logs?|datasets?)\b", re.I
+)
+
+
+def _clean(phrase: str) -> str:
+    """Strip reported-speech prefixes so templates read like a typed request."""
+    return re.sub(
+        r"^(the user asks |user asks |asks |wants |want |when |for |to |if )+",
+        "",
+        phrase.strip(),
+        flags=re.I,
+    ).strip()
+
+
 def generate(skill: Skill, others: list[Skill], n: int = 5) -> PromptSet:
     """Template prompts. Crude on purpose: write a prompt file for anything you care about."""
+    name = skill.name.replace("-", " ")
     templates = [
         "{p}",
         "Can you help me with this: {p}",
         "I need to {p_lower}. Where do I start?",
         "Please {p_lower} for this project.",
         "Quick one: {p_lower}?",
+        "{name} pls",
     ]
-    pos = []
-    for i, phrase in enumerate(_phrases(skill.description)):
-        t = templates[i % len(templates)]
+    # File-shaped requests only make sense for skills that work on files;
+    # "Here's data.csv, bake sourdough bread?" would be a nonsense positive.
+    if FILE_HINT_RE.search(skill.description):
+        templates += [
+            "Here's data.csv: {p_lower}?",
+            "My goal: {p_lower}. The file is data.csv, can you handle it?",
+            "Pasted from data.csv below. {p}. What does it mean?",
+            "Can you look at report.csv and {p_lower}?",
+        ]
+    phrases = [c for p in _phrases(skill.description) if (c := _clean(p))]
+    if not phrases:
+        kw = " ".join(tokens(skill.description)[:6]) or name
+        phrases.append(f"Help me with {kw}.")
+
+    pos, seen_pos = [], set()
+    j = 0
+    while len(pos) < n and j < n * len(templates):
+        phrase = phrases[j % len(phrases)]
+        t = templates[j % len(templates)]
         lower = phrase[0].lower() + phrase[1:]
-        lower = re.sub(r"^(when |for |to |if )", "", lower, flags=re.I)
-        pos.append(t.format(p=phrase, p_lower=lower))
-        if len(pos) >= n:
-            break
-    if not pos:
-        kw = " ".join(tokens(skill.description)[:6]) or skill.name.replace("-", " ")
-        pos.append(f"Help me with {kw}.")
+        prompt = t.format(p=phrase, p_lower=lower, name=name)
+        if prompt.lower() not in seen_pos:
+            seen_pos.add(prompt.lower())
+            pos.append(prompt)
+        j += 1
 
     neg = []
     own = set(tokens(skill.description))
