@@ -48,17 +48,15 @@ def cmd_lint(args) -> int:
             "ok": not failed,
             "stats": stats,
             "skills": [{"name": s.name, "source": s.source, "path": str(s.path)} for s in skills],
-            "findings": [
-                {k: v for k, v in f.to_dict().items() if args.suggest or k != "suggestion"}
-                for f in findings
-            ],
+            "findings": [{k: v for k, v in f.to_dict().items() if args.suggest or k != "suggestion"} for f in findings],
         }
         print(json.dumps(out, indent=2))
     elif args.format == "github":
         for f in findings:
             command = {"error": "error", "warning": "warning"}.get(f.severity, "notice")
             title = _github_escape_prop(f.rule)
-            msg = _github_escape_data(f.message)
+            text = f"{f.message}\n{f.suggestion}" if args.suggest and f.suggestion else f.message
+            msg = _github_escape_data(text)
             if f.path:
                 try:
                     rel = os.path.relpath(f.path)

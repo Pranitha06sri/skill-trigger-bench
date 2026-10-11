@@ -81,8 +81,7 @@ def _description_suggestion(description: str) -> str:
     # forms and vague or complex phrases instead of guessing or truncating them.
     # Without a recognized verb, accept only acronym-led nominal topics.
     placeholder = (
-        "Draft (review topic and trigger condition):\n"
-        "+ Use when [describe the request that should trigger this skill]."
+        "Draft (review topic and trigger condition):\n+ Use when [describe the request that should trigger this skill]."
     )
     opening = re.split(r"[.!?;:\n]", description.strip(), maxsplit=1)[0]
     verb = re.match(
@@ -91,7 +90,7 @@ def _description_suggestion(description: str) -> str:
         opening,
         flags=re.I,
     )
-    phrase = opening[verb.end():] if verb else opening
+    phrase = opening[verb.end() :] if verb else opening
     topic = re.split(r"\s+(?:into|with|for|to|that|which|using|from)\b", phrase, maxsplit=1, flags=re.I)[0]
     topic = " ".join(topic.split())
     words = topic.split()
@@ -99,14 +98,23 @@ def _description_suggestion(description: str) -> str:
         not words
         or len(words) > 8
         or not re.fullmatch(r"[^\W_]+(?:[- ][^\W_]+)*", topic)
-        or re.search(r"\b(?:I|you|we|it|they|this|that|these|those|them|something|anything|everything|"
-                     r"stuff|things|can|will|is|are|and|or)\b", topic, re.I)
+        or re.search(
+            r"\b(?:I|you|we|it|they|this|that|these|those|them|something|anything|everything|"
+            r"stuff|things|can|will|is|are|and|or)\b",
+            topic,
+            re.I,
+        )
         or any(word.lower().endswith("ly") for word in words)
         or (not verb and not re.match(r"^[A-Z][A-Z0-9]+(?:\s|$)", topic))
-        or (not verb and not re.search(
-            r"\b(?:conversion|processing|analysis|summaries|extraction|validation|management|"
-            r"files|documents|reports)\Z", topic, re.I,
-        ))
+        or (
+            not verb
+            and not re.search(
+                r"\b(?:conversion|processing|analysis|summaries|extraction|validation|management|"
+                r"files|documents|reports)\Z",
+                topic,
+                re.I,
+            )
+        )
     ):
         return placeholder
     return (
@@ -163,8 +171,7 @@ def _check_frontmatter(s: Skill) -> list[Finding]:
                 f"description is {len(d)} chars (max {DESCRIPTION_MAX})",
                 p,
                 suggestion=(
-                    f"+ Remove {len(d) - DESCRIPTION_MAX} characters to meet "
-                    f"the {DESCRIPTION_MAX}-character limit."
+                    f"+ Remove {len(d) - DESCRIPTION_MAX} characters to meet the {DESCRIPTION_MAX}-character limit."
                 ),
             )
         )

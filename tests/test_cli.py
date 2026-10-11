@@ -54,7 +54,7 @@ class CliTests(SkillDirCase):
         self.assertNotIn("+ name:", plain)
         lines = suggested.splitlines()
         index = next(i for i, line in enumerate(lines) if "name-dir-mismatch" in line)
-        self.assertEqual(lines[index + 1:index + 3], ['  - name: "other-name"', '  + name: "folder"'])
+        self.assertEqual(lines[index + 1 : index + 3], ['  - name: "other-name"', '  + name: "folder"'])
         self.assertEqual("\n".join(line for line in lines if not line.startswith(("  -", "  +"))) + "\n", plain)
 
     def test_suggest_json_preserves_existing_fields(self):
@@ -65,7 +65,7 @@ class CliTests(SkillDirCase):
         baseline, data = json.loads(plain), json.loads(suggested)
         self.assertEqual(code, plain_code)
         self.assertEqual(set(baseline), {"version", "ok", "stats", "skills", "findings"})
-        for original, finding in zip(baseline["findings"], data["findings"]):
+        for original, finding in zip(baseline["findings"], data["findings"], strict=True):
             self.assertEqual(set(original), {"rule", "severity", "skill", "message", "path"})
             if finding["rule"] in {"name-format", "name-dir-mismatch", "description-no-when"}:
                 self.assertTrue(finding.pop("suggestion"))
@@ -79,8 +79,13 @@ class CliTests(SkillDirCase):
         with patch("skill_trigger_bench.cli.lint", return_value=([finding], stats)):
             for options in ([], ["--suggest"]):
                 _, out, _ = run(["lint", str(self.root), "--format", "json"] + options)
-                expected = {"rule": "trigger-overlap", "severity": "warning", "skill": "x",
-                            "message": "message", "other": "y"}
+                expected = {
+                    "rule": "trigger-overlap",
+                    "severity": "warning",
+                    "skill": "x",
+                    "message": "message",
+                    "other": "y",
+                }
                 if options:
                     expected["suggestion"] = "+ draft"
                 self.assertEqual(json.loads(out)["findings"], [expected])
@@ -90,15 +95,21 @@ class CliTests(SkillDirCase):
         before = {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.rglob("SKILL.md")}
         for fmt in ("text", "json", "github"):
             run(["lint", str(self.root), "--suggest", "--format", fmt])
-        self.assertEqual(before,
-                         {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.rglob("SKILL.md")})
+        self.assertEqual(before, {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in self.root.rglob("SKILL.md")})
 
     def test_suggest_preserves_exit_counts_ignore_strict_and_github(self):
-        cases = [(GOOD, "x", [], 0), (GOOD, "My_Skill", [], 1),
-                 ("PDF conversion with tables preserved.", "x", [], 0),
-                 ("PDF conversion with tables preserved.", "x", ["--strict"], 1),
-                 ("PDF conversion with tables preserved.", "x",
-                  ["--strict", "--ignore", "description-no-when,description-short"], 0)]
+        cases = [
+            (GOOD, "x", [], 0),
+            (GOOD, "My_Skill", [], 1),
+            ("PDF conversion with tables preserved.", "x", [], 0),
+            ("PDF conversion with tables preserved.", "x", ["--strict"], 1),
+            (
+                "PDF conversion with tables preserved.",
+                "x",
+                ["--strict", "--ignore", "description-no-when,description-short"],
+                0,
+            ),
+        ]
         for description, name, options, expected in cases:
             self.make_skill("x", name, description)
             for fmt in ("text", "json", "github"):
@@ -109,7 +120,12 @@ class CliTests(SkillDirCase):
                     self.assertEqual(code, expected)
                     self.assertEqual(suggest_code, code)
                     if fmt == "github":
-                        self.assertEqual(suggested, plain)
+                        # one annotation per finding either way; the suggestion rides in the message
+                        pairs = zip(plain.splitlines(), suggested.splitlines(), strict=True)
+                        for before, after in pairs:
+                            self.assertTrue(after.startswith(before))
+                        if name == "My_Skill":
+                            self.assertIn('%0A+ name: "x"', suggested)
                     elif fmt == "text":
                         self.assertEqual(suggested.splitlines()[-1], plain.splitlines()[-1])
                     else:
